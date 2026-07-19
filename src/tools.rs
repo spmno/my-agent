@@ -123,6 +123,34 @@ impl Tool for RunBash {
     }
 }
 
+/// Builtin tool names, matching each tool's `const NAME`. Used by the
+/// autonomous loop to classify a tool call by name.
+pub const TOOL_NAMES: &[&str] = &["read_file", "edit_file", "run_bash"];
+
+/// Classify a shell command as read-only (safe to auto-run) vs mutating.
+/// Returns false when in doubt — the loop then treats it as mutating and asks
+/// the human, because auto-running something destructive is worse than a prompt.
+pub fn is_readonly_bash(command: &str) -> bool {
+    const READONLY_PREFIXES: &[&str] = &[
+        "ls", "cat", "head", "tail", "grep", "git status", "git log", "git diff", "git show",
+        "pwd", "echo", "find", "wc", "tree", "which", "readlink",
+    ];
+    for segment in command.split(|c| c == '|' || c == ';' || c == '&' || c == '\n') {
+        let s = segment.trim();
+        if s.is_empty() {
+            return false;
+        }
+        // Redirection / appending writes to a file: mutating, not read-only.
+        if s.contains('>') || s.contains("2>") {
+            return false;
+        }
+        if !READONLY_PREFIXES.iter().any(|p| s.starts_with(p)) {
+            return false;
+        }
+    }
+    true
+}
+
 /// Builtin tools every Builder agent gets. Extension (Phase 4) appends more and
 /// persists them to a manifest that loads on boot.
 pub fn builtin_tools() -> Result<Vec<Box<dyn rig_core::tool::ToolDyn>>> {
@@ -131,4 +159,28 @@ pub fn builtin_tools() -> Result<Vec<Box<dyn rig_core::tool::ToolDyn>>> {
         Box::new(EditFile),
         Box::new(RunBash),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn readonly_commands_classified() {
+        assert!(is_readonly_bash("ls -la"));
+        assert!(is_readonly_bash("cat file.txt"));
+        assert!(is_readonly_bash("git status"));
+        assert!(is_readonly_bash("grep -r foo src | head"));
+        assert!(is_readonly_bash("git log --oneline"));
+    }
+
+    #[test]
+    fn mutating_commands_not_readonly() {
+        assert!(!is_readonly_bash("rm -rf x"));
+        assert!(!is_readonly_bash("git commit -m x"));
+        assert!(!is_readonly_bash("cargo build"));
+        assert!(!is_readonly_bash("ls && rm x"));
+        assert!(!is_readonly_bash("echo hi > file"));
+        assert!(!is_readonly_bash(""));
+    }
 }

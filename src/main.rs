@@ -4,6 +4,7 @@ mod providers;
 mod reviewer;
 mod tools;
 mod evolution;
+mod agent_loop;
 
 use anyhow::Result;
 use evolution::{
@@ -21,10 +22,13 @@ async fn main() -> Result<()> {
         .init();
 
     let reg_cfg = AgentRegistryConfig::load("agent.toml")?;
-    let threshold = load_escalation_threshold()?;
+    #[allow(unused)]
+    let threshold = load_escalation_threshold()?; // reserved for future review-gated mode
     let registry = AgentRegistry::new(reg_cfg);
-    let orchestrator = Orchestrator::new(registry.clone());
-    let reviewer = ReviewGate::new(registry.clone());
+    #[allow(unused)]
+    let orchestrator = Orchestrator::new(registry.clone()); // reserved for one-shot `chat` mode
+    #[allow(unused)]
+    let reviewer = ReviewGate::new(registry.clone()); // reserved for review-gated mode
     let evolver = PromptEvolver::new(registry.clone(), "AGENTS.md".to_string());
 
     let mem = memory::MemoryStore::new(&load_memory_cfg()?)?;
@@ -104,44 +108,24 @@ async fn main() -> Result<()> {
             continue;
         }
 
-        mem.append_turn(&memory::Turn {
-            role: "user".into(),
-            content: input.into(),
-            ts: now(),
-        })?;
-
-        match orchestrator.handle(input).await {
+        // Any non-meta input is a goal for the autonomous agent loop. The loop
+        // runs the Builder role, which plans and calls tools itself; the
+        // human-in-the-loop hook pauses only for Ask-tier tool calls.
+        match agent_loop::run_autonomous(&registry, input).await {
             Ok(out) => {
-                let mut out = out;
-                if registry::classify(input) == registry::Intent::Implement {
-                    match reviewer.review(input, &out).await? {
-                        reviewer::Verdict::Approve => {
-                            out.push_str("\n\n[review: APPROVED]");
-                            mem.record_lesson(&memory::Lesson {
-                                summary: format!("implemented + approved: {input}"),
-                                ts: now(),
-                            })?;
-                        }
-                        reviewer::Verdict::Reject(fb) => {
-                            out.push_str(&format!("\n\n[review: REJECTED] {fb}"));
-                            if mem.observe_rule(&fb, threshold)? {
-                                mem.promote_rule_to_agents_md(&fb, "AGENTS.md")?;
-                                println!("[rule escalated to AGENTS.md]");
-                            }
-                        }
-                        reviewer::Verdict::Clarify(q) => {
-                            out.push_str(&format!("\n\n[review: CLARIFY] {q}"));
-                        }
-                    }
-                }
                 println!("{out}");
+                mem.append_turn(&memory::Turn {
+                    role: "user".into(),
+                    content: input.into(),
+                    ts: now(),
+                })?;
                 mem.append_turn(&memory::Turn {
                     role: "agent".into(),
                     content: out,
                     ts: now(),
                 })?;
             }
-            Err(e) => eprintln!("error: {e}"),
+            Err(e) => eprintln!("autonomous loop error: {e}"),
         }
     }
     Ok(())

@@ -1,3 +1,7 @@
+// Two-stage review gate. Reserved for the review-gated mode; the autonomous
+// loop currently uses its own permission-tier hook for human-in-the-loop.
+#![allow(dead_code)]
+
 use crate::registry::{AgentRegistry, Role};
 
 #[derive(Debug, PartialEq, Eq)]

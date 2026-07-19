@@ -1,3 +1,8 @@
+// Core memory/experience store. Some methods are not yet called by the
+// autonomous loop but are part of the self-improvement design (rule escalation,
+// lesson recording for the review-gated mode).
+#![allow(dead_code)]
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

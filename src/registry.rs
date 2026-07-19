@@ -18,15 +18,40 @@ pub struct RoleConfig {
     pub model: String,
     pub preamble: String,
     #[serde(default)]
-    pub permissions: Permissions,
+    pub permissions: ToolPerms,
 }
 
-#[derive(Debug, Deserialize, Clone, Default)]
-pub struct Permissions {
-    #[serde(default)]
-    pub edit: Permission,
-    #[serde(default)]
-    pub bash: Permission,
+// Per-tool permission tiers for the autonomous loop's human-in-the-loop gate.
+// `allow` = auto-run without prompting; `ask` = pause for human confirmation;
+// `deny` = block the call and explain to the model.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct ToolPerms {
+    #[serde(default = "default_allow")]
+    pub read_file: Permission,
+    #[serde(default = "default_allow")]
+    pub run_bash_readonly: Permission,
+    #[serde(default = "default_ask")]
+    pub run_bash_mutating: Permission,
+    #[serde(default = "default_ask")]
+    pub edit_file: Permission,
+}
+
+fn default_allow() -> Permission {
+    Permission::Allow
+}
+fn default_ask() -> Permission {
+    Permission::Ask
+}
+
+impl Default for ToolPerms {
+    fn default() -> Self {
+        ToolPerms {
+            read_file: Permission::Allow,
+            run_bash_readonly: Permission::Allow,
+            run_bash_mutating: Permission::Ask,
+            edit_file: Permission::Ask,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
@@ -40,6 +65,8 @@ pub enum Permission {
 
 #[derive(Debug, Deserialize)]
 pub struct AgentRegistryConfig {
+    #[serde(default)]
+    pub max_turns: usize,
     #[serde(rename = "agents")]
     pub roles: std::collections::HashMap<String, RoleConfig>,
 }
@@ -49,6 +76,14 @@ impl AgentRegistryConfig {
         let raw = std::fs::read_to_string(path)?;
         let cfg: AgentRegistryConfig = toml::from_str(&raw)?;
         Ok(cfg)
+    }
+
+    pub fn max_turns(&self) -> usize {
+        if self.max_turns == 0 {
+            20
+        } else {
+            self.max_turns
+        }
     }
 }
 
@@ -60,7 +95,7 @@ pub struct RoleAgent {
     // Permissions are enforced at build time (which tools an agent gets). The
     // fields are retained for runtime inspection / Phase-3 policy checks.
     #[allow(dead_code)]
-    pub permissions: Permissions,
+    pub permissions: ToolPerms,
 }
 
 impl RoleAgent {
@@ -101,6 +136,11 @@ impl AgentRegistry {
         self.session_model.lock().unwrap().clone()
     }
 
+    /// Loop cap for the autonomous agent run, forwarded from config.
+    pub fn max_turns(&self) -> usize {
+        self.config.max_turns()
+    }
+
     pub fn build(&self, role: Role) -> anyhow::Result<RoleAgent> {
         let key = format!("{role:?}").to_lowercase();
         let rc = self
@@ -116,8 +156,11 @@ impl AgentRegistry {
             Some(ref m) => m.clone(),
             None => rc.model.clone(),
         };
-        let with_tools =
-            rc.permissions.edit == Permission::Allow || rc.permissions.bash == Permission::Allow;
+        // Grant tools whenever any builtin tool is allowed for this role.
+        let with_tools = rc.permissions.read_file == Permission::Allow
+            || rc.permissions.run_bash_readonly == Permission::Allow
+            || rc.permissions.run_bash_mutating == Permission::Allow
+            || rc.permissions.edit_file == Permission::Allow;
         let agent = if with_tools {
             let tools = crate::tools::builtin_tools()?;
             client
@@ -139,9 +182,30 @@ impl AgentRegistry {
             permissions: rc.permissions.clone(),
         })
     }
+
+    /// Per-tool permission tiers for a role, used by the autonomous loop's
+    /// human-in-the-loop gate to decide allow / ask / deny per tool call.
+    pub fn tool_perms(&self, role: Role) -> ToolPerms {
+        let key = format!("{role:?}").to_lowercase();
+        self.config
+            .roles
+            .get(&key)
+            .map(|rc| rc.permissions.clone())
+            .unwrap_or_default()
+    }
+
+    /// Role config lookup used by the autonomous loop to rebuild a runner-capable
+    /// agent (the loop needs the raw `Agent`, not the `RoleAgent` wrapper).
+    pub fn role_config(&self, role: Role) -> Option<&RoleConfig> {
+        let key = format!("{role:?}").to_lowercase();
+        self.config.roles.get(&key)
+    }
 }
 
 /// Classify a user message into an intent, mirroring OMO's Intent Gate.
+/// Reserved for the one-shot `chat` mode (the autonomous loop currently handles
+/// all non-meta input directly).
+#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum Intent {
     Implement,
@@ -149,6 +213,7 @@ pub enum Intent {
     Chat,
 }
 
+#[allow(dead_code)]
 pub fn classify(message: &str) -> Intent {
     let m = message.to_lowercase();
     if ["implement", "add", "create", "fix", "write", "build"]
@@ -167,12 +232,14 @@ pub fn classify(message: &str) -> Intent {
 }
 
 /// Orchestrator: classify intent, then delegate to the right role-agent. This is
-/// the Sisyphus-equivalent. For Phase 2 it does direct delegation; Phase 3 adds
-/// the planner/review subagent loop.
+/// the Sisyphus-equivalent. Reserved for the one-shot `chat` mode; the autonomous
+/// loop currently handles non-meta input directly.
+#[allow(dead_code)]
 pub struct Orchestrator {
     registry: AgentRegistry,
 }
 
+#[allow(dead_code)]
 impl Orchestrator {
     pub fn new(registry: AgentRegistry) -> Self {
         Self { registry }

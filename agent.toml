@@ -12,32 +12,46 @@ api_key_env = "OPENROUTER_API_KEY"
 # including free models. Switch at runtime with the REPL command: model <slug>
 # e.g. model tencent/hy3:free
 default_model = "tencent/hy3:free"
+# Autonomous-loop cap: max agent turns before it stops and reports.
+max_turns = 20
 
 # Each role selects its own model and prompt file. Override all at once from
 # the REPL with: model <slug>
+# Per-tool permission tiers for the human-in-the-loop gate:
+#   allow = auto-run without prompting; ask = pause for confirmation; deny = block.
+#   read_file / run_bash_readonly auto-run (e.g. ls, cat, git status);
+#   run_bash_mutating / edit_file ask before executing.
 [agents.orchestrator]
 model = "tencent/hy3:free"
 preamble = "AGENTS.md"
-permissions.edit = "deny"
-permissions.bash = "deny"
+permissions.read_file = "allow"
+permissions.run_bash_readonly = "allow"
+permissions.run_bash_mutating = "deny"
+permissions.edit_file = "deny"
 
 [agents.planner]
 model = "tencent/hy3:free"
 preamble = "prompts/planner.md"
-permissions.edit = "deny"
-permissions.bash = "deny"
+permissions.read_file = "allow"
+permissions.run_bash_readonly = "allow"
+permissions.run_bash_mutating = "deny"
+permissions.edit_file = "deny"
 
 [agents.builder]
 model = "tencent/hy3:free"
 preamble = "prompts/builder.md"
-permissions.edit = "allow"
-permissions.bash = "allow"
+permissions.read_file = "allow"
+permissions.run_bash_readonly = "allow"
+permissions.run_bash_mutating = "ask"
+permissions.edit_file = "ask"
 
 [agents.auditor]
 model = "tencent/hy3:free"
 preamble = "prompts/auditor.md"
-permissions.edit = "deny"
-permissions.bash = "deny"
+permissions.read_file = "allow"
+permissions.run_bash_readonly = "allow"
+permissions.run_bash_mutating = "deny"
+permissions.edit_file = "deny"
 
 [memory]
 # JSONL-backed memory store (v1). Extensible to sqlite later.
