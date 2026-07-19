@@ -13,7 +13,6 @@ use evolution::{
 };
 use registry::{AgentRegistryConfig, AgentRegistry, Orchestrator};
 use reviewer::ReviewGate;
-use std::io::{self, Write};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -35,12 +34,18 @@ async fn main() -> Result<()> {
         current_model(&registry)
     );
 
-    let mut line = String::new();
+    // rustyline gives proper UTF-8 / IME line editing: Backspace removes one
+    // char (not one byte), ↑/↓ history works, and CJK input composes correctly.
+    let mut rl = rustyline::DefaultEditor::new()?;
     loop {
-        print!("> ");
-        io::stdout().flush()?;
-        line.clear();
-        io::stdin().read_line(&mut line)?;
+        let read = rl.readline("> ");
+        let line = match read {
+            Ok(l) => l,
+            Err(rustyline::error::ReadlineError::Interrupted) => continue,
+            Err(rustyline::error::ReadlineError::Eof) => break,
+            Err(e) => return Err(e.into()),
+        };
+        rl.add_history_entry(line.as_str())?;
         let input = line.trim();
         if input.is_empty() {
             continue;
