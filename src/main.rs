@@ -1,3 +1,5 @@
+// 程序入口（REPL）：加载配置、构建各角色 Agent，并在交互循环中处理元命令与
+// 自然语言目标（目标会被交给自主循环 agent_loop 执行）。
 mod memory;
 mod registry;
 mod providers;
@@ -38,8 +40,8 @@ async fn main() -> Result<()> {
         current_model(&registry)
     );
 
-    // rustyline gives proper UTF-8 / IME line editing: Backspace removes one
-    // char (not one byte), ↑/↓ history works, and CJK input composes correctly.
+    // rustyline 提供正确的 UTF-8 / IME 行编辑：退格删除一个字符（而非一个字节），
+    // ↑/↓ 历史记录可用，中文等输入能正确组合。
     let mut rl = rustyline::DefaultEditor::new()?;
     loop {
         let read = rl.readline("> ");
@@ -58,9 +60,8 @@ async fn main() -> Result<()> {
             break;
         }
 
-        // REPL meta-commands. Order matters: "evolve-code"/"add-tool" must be
-        // checked before the "evolve" prefix, since "evolve-code" starts with
-        // "evolve". "model" is a distinct command.
+        // REPL 元命令。顺序很关键："evolve-code"/"add-tool" 必须在 "evolve" 前缀之前
+        // 检查，因为 "evolve-code" 以 "evolve" 开头。"model" 是独立命令。
         if let Some(rest) = input.strip_prefix("model") {
             let slug = rest.trim();
             if slug.is_empty() {
@@ -108,9 +109,8 @@ async fn main() -> Result<()> {
             continue;
         }
 
-        // Any non-meta input is a goal for the autonomous agent loop. The loop
-        // runs the Builder role, which plans and calls tools itself; the
-        // human-in-the-loop hook pauses only for Ask-tier tool calls.
+        // 任何非元命令的输入都是自主循环的目标。循环运行 Builder 角色，由其自行规划
+        // 并调用工具；仅当工具处于"需询问"(ask) 分级时，人才会被暂停确认。
         match agent_loop::run_autonomous(&registry, input).await {
             Ok(out) => {
                 println!("{out}");

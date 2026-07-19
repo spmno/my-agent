@@ -1,12 +1,12 @@
-// Core memory/experience store. Some methods are not yet called by the
-// autonomous loop but are part of the self-improvement design (rule escalation,
-// lesson recording for the review-gated mode).
+// 核心记忆/经验存储模块。部分方法当前尚未被自主循环调用，但属于自我进化设计
+// 的一部分（规则升级、为"评审门"模式记录经验）。
 #![allow(dead_code)]
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// 一轮对话记录，以 JSONL 形式追加写入会话文件。
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Turn {
     pub role: String, // "user" | "agent"
@@ -14,12 +14,14 @@ pub struct Turn {
     pub ts: u64,
 }
 
+/// 一条经验总结（任务完成后提取的可复用教训）。
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Lesson {
     pub summary: String,
     pub ts: u64,
 }
 
+/// 一条被反复观察到的行为规则，count 达到阈值后会被提升进 AGENTS.md。
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Rule {
     pub text: String,
@@ -27,6 +29,7 @@ pub struct Rule {
     pub written_to: bool,
 }
 
+/// 记忆存储的路径配置（来自 agent.toml 的 [memory] 段）。
 #[derive(Debug, Deserialize)]
 pub struct MemoryConfig {
     pub dir: PathBuf,
@@ -35,6 +38,7 @@ pub struct MemoryConfig {
     pub rules_file: String,
 }
 
+/// 记忆存储：管理会话、经验、规则的 JSONL / JSON 文件读写。
 pub struct MemoryStore {
     #[allow(dead_code)]
     dir: PathBuf,
@@ -44,6 +48,7 @@ pub struct MemoryStore {
 }
 
 impl MemoryStore {
+    /// 按配置初始化存储目录与文件路径。
     pub fn new(cfg: &MemoryConfig) -> Result<Self> {
         std::fs::create_dir_all(&cfg.dir)?;
         Ok(Self {
@@ -76,8 +81,8 @@ impl MemoryStore {
         Ok(())
     }
 
-    /// Record an observed behavioral rule. Returns true if it just crossed the
-    /// escalation threshold and should be promoted into AGENTS.md.
+    /// 记录一条被观察到的行为规则。返回 true 表示它刚刚跨过升级阈值，
+    /// 应当被提升写入 AGENTS.md。
     pub fn observe_rule(&self, text: &str, threshold: u32) -> Result<bool> {
         let mut rules = self.load_rules()?;
         let existing = rules.iter().position(|r| r.text == text);
@@ -116,8 +121,8 @@ impl MemoryStore {
         Ok(rules)
     }
 
-    /// Append an escalated rule to AGENTS.md so it becomes a persistent
-    /// behavioral instruction. Returns the new section text written.
+    /// 把已升级的规则追加到 AGENTS.md，使其成为持久的行为指令。
+    /// 返回实际写入的新段落文本。
     pub fn promote_rule_to_agents_md(&self, rule: &str, path: &str) -> Result<String> {
         let section = format!("\n## Escalated rule\n- {rule}\n");
         use std::io::Write;

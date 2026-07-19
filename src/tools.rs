@@ -1,8 +1,12 @@
+// 内置工具模块：为 Builder Agent 提供文件读写与命令执行能力。
+// 注意：各工具的 `description()` 是面向模型（LLM）的英文提示，需保持英文，
+// 不应改为中文；下方模块级与函数级注释才使用中文。
 use anyhow::Result;
 use rig_core::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
 
+/// 工具统一错误类型。
 #[derive(Debug, thiserror::Error)]
 #[error("tool error: {0}")]
 struct ToolError(String);
@@ -158,13 +162,12 @@ impl Tool for RunBash {
     }
 }
 
-/// Builtin tool names, matching each tool's `const NAME`. Used by the
-/// autonomous loop to classify a tool call by name.
+/// 内置工具名称表，与各工具的 `const NAME` 一一对应。供自主循环按名称分类工具调用。
 pub const TOOL_NAMES: &[&str] = &["read_file", "edit_file", "write_file", "run_bash"];
 
-/// Classify a shell command as read-only (safe to auto-run) vs mutating.
-/// Returns false when in doubt — the loop then treats it as mutating and asks
-/// the human, because auto-running something destructive is worse than a prompt.
+/// 判断 shell 命令是否为只读（可安全自动执行）还是会改变状态（需询问）。
+/// 拿不准时返回 false —— 循环会将其视为"会改变状态"并询问人类，
+/// 因为自动执行破坏性命令比多一次确认更危险。
 pub fn is_readonly_bash(command: &str) -> bool {
     const READONLY_PREFIXES: &[&str] = &[
         "ls", "cat", "head", "tail", "grep", "git status", "git log", "git diff", "git show",
@@ -186,8 +189,8 @@ pub fn is_readonly_bash(command: &str) -> bool {
     true
 }
 
-/// Builtin tools every Builder agent gets. Extension (Phase 4) appends more and
-/// persists them to a manifest that loads on boot.
+/// 每个 Builder Agent 都内置的工具集合。Phase 4 的扩展会追加更多工具，
+/// 并以清单（manifest）形式持久化，在启动时加载。
 pub fn builtin_tools() -> Result<Vec<Box<dyn rig_core::tool::ToolDyn>>> {
     Ok(vec![
         Box::new(ReadFile),

@@ -1,3 +1,5 @@
+// 自主循环模块：用 rig 的 AgentRunner 驱动一个自我驱动的 Agent 循环（上限 max_turns），
+// 并通过 HitlHook（rig AgentHook）在每次工具调用时按权限分级做"人在环"门控。
 use std::sync::{Arc, Mutex};
 
 use rig_core::agent::{AgentHook, Flow, HookContext, StepEvent};
@@ -9,14 +11,14 @@ use rig_core::tool::ToolDyn;
 use crate::registry::{AgentRegistry, Permission, Role, ToolPerms};
 use crate::tools::{is_readonly_bash, TOOL_NAMES};
 
-/// Human-in-the-loop gate. Implemented as a rig `AgentHook` that intercepts
-/// every `ToolCall` and applies the role's per-tool permission tier:
-/// - `Allow`  -> run silently (no prompt). Trivial steps like `ls` flow through.
-/// - `Ask`    -> pause and ask the user on the terminal; yes runs, no skips.
-/// - `Deny`   -> skip the call and explain to the model why.
+/// 人在环门控。实现为 rig 的 `AgentHook`，拦截每一次 `ToolCall` 并按角色的
+/// 按工具权限分级处理：
+/// - `Allow` -> 静默执行（不询问）。像 `ls` 这样的琐碎步骤直接通过。
+/// - `Ask`   -> 在终端暂停询问用户；yes 执行，no 跳过。
+/// - `Deny`  -> 跳过调用并向模型说明原因。
 ///
-/// Only `ToolCall` events are gated; model turns, results and deltas pass
-/// through untouched. The permission tiers are captured at run start.
+/// 仅对 `ToolCall` 事件做门控；模型的回合、结果、增量事件原样通过。
+/// 权限分级在循环启动时即已捕获。
 #[derive(Clone)]
 pub struct HitlHook {
     perms: Arc<Mutex<ToolPerms>>,
@@ -30,15 +32,14 @@ impl HitlHook {
         }
     }
 
-    /// Resolve the permission tier for a tool call by name + args.
+    /// 按工具名 + 参数解析其权限分级。
     fn tier_for(&self, tool_name: &str, args: &str) -> Permission {
         let perms = self.perms.lock().unwrap();
         decide_tier(&perms, tool_name, args)
     }
 
-    /// Block on a terminal yes/no prompt. Runs the blocking rustyline read on a
-    /// separate thread via `spawn_blocking` so it does not stall the async
-    /// runtime, then awaits the handle. Returns true for "yes".
+    /// 在终端阻塞式询问 yes/no。通过 `spawn_blocking` 在独立线程执行阻塞的
+    /// rustyline 读取，避免卡住异步运行时，随后 await 其结果。返回 true 表示"是"。
     async fn confirm(&self, prompt: &str) -> bool {
         let prompt = prompt.to_string();
         let handle = tokio::task::spawn_blocking(move || {
@@ -69,8 +70,8 @@ impl<M: CompletionModel> AgentHook<M> for HitlHook {
     }
 }
 
-/// Pure tier resolution, testable without the hook wrapper. `args` is the JSON
-/// tool-call arguments (used to extract the `command` for `run_bash`).
+/// 纯函数形式的权限分级解析，可不依赖 hook 包装单独测试。`args` 为 JSON 形式的
+/// 工具调用参数（用于从 `run_bash` 中提取 `command`）。
 pub fn decide_tier(perms: &ToolPerms, tool_name: &str, args: &str) -> Permission {
     match tool_name {
         "read_file" => perms.read_file,
@@ -90,9 +91,9 @@ pub fn decide_tier(perms: &ToolPerms, tool_name: &str, args: &str) -> Permission
     }
 }
 
-/// Pure flow decision from permission tiers. Does not prompt — an `Ask` tier
-/// resolves to `Flow::Skip` (treated as declined) so it is deterministic and
-/// unit-testable; the live hook replaces the `Ask` branch with a terminal prompt.
+/// 由权限分级得出纯函数的流程决策。不进行交互询问——`Ask` 分级在此解析为
+/// `Flow::Skip`（视为已拒绝），从而保证确定性与可单元测试；线上 hook 则把
+/// `Ask` 分支替换为终端询问。
 pub fn decide_flow(perms: &ToolPerms, tool_name: &str, args: &str) -> Flow {
     match decide_tier(perms, tool_name, args) {
         Permission::Allow => Flow::Continue,
@@ -105,9 +106,8 @@ pub fn decide_flow(perms: &ToolPerms, tool_name: &str, args: &str) -> Flow {
     }
 }
 
-/// Drive an autonomous agent loop for `goal`. The Builder role plans and acts,
-/// calling tools itself; the `HitlHook` gates key decisions. Stops when the
-/// model finishes, or `max_turns` is reached.
+/// 针对 `goal` 驱动自主 Agent 循环。Builder 角色自行规划并执行，调用工具；
+/// `HitlHook` 门控关键决策。模型结束或达到 max_turns 时停止。
 pub async fn run_autonomous(registry: &AgentRegistry, goal: &str) -> anyhow::Result<String> {
     let perms = registry.tool_perms(Role::Builder);
     let max_turns = registry.max_turns();
@@ -117,8 +117,7 @@ pub async fn run_autonomous(registry: &AgentRegistry, goal: &str) -> anyhow::Res
     let response = agent
         .runner(goal)
         .max_turns(max_turns)
-        // Recover from stray/unknown tool names (e.g. model invents a tool) by
-        // retrying the turn with corrective feedback instead of aborting.
+        // 对模型臆造的未知工具名做容错：重试该回合并附带纠正反馈，而非直接中止循环。
         .max_invalid_tool_call_retries(3)
         .add_hook(hook)
         .run()
@@ -126,9 +125,8 @@ pub async fn run_autonomous(registry: &AgentRegistry, goal: &str) -> anyhow::Res
     Ok(response.output)
 }
 
-/// Build a rig `Agent` (runner-capable) for a role with its tools, honoring the
-/// session model override. Mirrors `AgentRegistry::build` but returns the raw
-/// `Agent` so the runner + hook can be attached.
+/// 为某角色构建"可运行"的 rig `Agent`（带工具），并遵循会话级模型覆盖。
+/// 与 `AgentRegistry::build` 类似，但返回原始 `Agent`，以便附加 runner 与 hook。
 fn build_runner_agent(
     registry: &AgentRegistry,
     role: Role,
@@ -152,7 +150,7 @@ fn build_runner_agent(
 
 #[allow(dead_code)]
 fn _assert_tool_names() {
-    // Compile-time guard that the classifier covers every builtin tool.
+    // 编译期守卫：确保分类器覆盖了每一个内置工具。
     let _ = TOOL_NAMES;
 }
 
@@ -188,7 +186,7 @@ mod tests {
 
     #[test]
     fn mutating_bash_asks() {
-        // Ask tier resolves to Skip in the pure decision (live hook prompts).
+        // 纯函数决策中 Ask 分级解析为 Skip（线上 hook 会改为交互询问）。
         assert!(matches!(
             decide_flow(&perms(), "run_bash", r#"{"command":"rm -rf x"}"#),
             Flow::Skip { .. }

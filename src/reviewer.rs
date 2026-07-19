@@ -1,30 +1,32 @@
-// Two-stage review gate. Reserved for the review-gated mode; the autonomous
-// loop currently uses its own permission-tier hook for human-in-the-loop.
+// 两阶段评审门。为"评审门"模式预留；当前自主循环使用自身的权限分级 hook 实现
+// 人在环（human-in-the-loop）控制。
 #![allow(dead_code)]
 
 use crate::registry::{AgentRegistry, Role};
 
+/// 评审结论：通过 / 驳回（附反馈）/ 需要澄清（附问题）。
 #[derive(Debug, PartialEq, Eq)]
 pub enum Verdict {
     Approve,
-    Reject(String), // feedback to return to the builder
+    Reject(String), // 返回给构建者的反馈
     Clarify(String),
 }
 
-/// SDD two-stage review gate. Mirrors OMO's requirement that no task is "done"
-/// until an auditor passes both stages:
-///   1. Spec compliance  — did it implement what was asked?
-///   2. Code quality     — security, correctness, maintainability.
-/// Both must Approve, otherwise the work is sent back with feedback.
+/// SDD 两阶段评审门。遵循 OMO 的纪律：在审计者通过两个阶段之前，任务不算完成：
+///   1. 规格符合性 —— 是否实现了所要求的内容？
+///   2. 代码质量   —— 安全性、正确性、可维护性。
+/// 两者都必须 Approve，否则带着反馈退回。
 pub struct ReviewGate {
     registry: AgentRegistry,
 }
 
 impl ReviewGate {
+    /// 构造评审门（持有 registry 以构建审计者 Agent）。
     pub fn new(registry: AgentRegistry) -> Self {
         Self { registry }
     }
 
+    /// 对产物执行两阶段评审，返回最终结论。
     pub async fn review(&self, task: &str, produced: &str) -> anyhow::Result<Verdict> {
         let auditor = self.registry.build(Role::Auditor)?;
 
