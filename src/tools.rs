@@ -82,6 +82,41 @@ impl Tool for EditFile {
 }
 
 #[derive(Deserialize)]
+struct WriteFileArgs {
+    path: String,
+    content: String,
+}
+
+struct WriteFile;
+
+impl Tool for WriteFile {
+    const NAME: &'static str = "write_file";
+    type Error = ToolError;
+    type Args = WriteFileArgs;
+    type Output = String;
+
+    fn description(&self) -> String {
+        "Create or overwrite a file with the given content.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "description": "Relative path to the file" },
+                "content": { "type": "string", "description": "Full file content to write" }
+            },
+            "required": ["path", "content"],
+        })
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        std::fs::write(&args.path, &args.content).map_err(|e| ToolError(e.to_string()))?;
+        Ok(format!("wrote {}", args.path))
+    }
+}
+
+#[derive(Deserialize)]
 struct BashArgs {
     command: String,
 }
@@ -125,7 +160,7 @@ impl Tool for RunBash {
 
 /// Builtin tool names, matching each tool's `const NAME`. Used by the
 /// autonomous loop to classify a tool call by name.
-pub const TOOL_NAMES: &[&str] = &["read_file", "edit_file", "run_bash"];
+pub const TOOL_NAMES: &[&str] = &["read_file", "edit_file", "write_file", "run_bash"];
 
 /// Classify a shell command as read-only (safe to auto-run) vs mutating.
 /// Returns false when in doubt — the loop then treats it as mutating and asks
@@ -157,6 +192,7 @@ pub fn builtin_tools() -> Result<Vec<Box<dyn rig_core::tool::ToolDyn>>> {
     Ok(vec![
         Box::new(ReadFile),
         Box::new(EditFile),
+        Box::new(WriteFile),
         Box::new(RunBash),
     ])
 }

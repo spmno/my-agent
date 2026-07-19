@@ -74,7 +74,7 @@ impl<M: CompletionModel> AgentHook<M> for HitlHook {
 pub fn decide_tier(perms: &ToolPerms, tool_name: &str, args: &str) -> Permission {
     match tool_name {
         "read_file" => perms.read_file,
-        "edit_file" => perms.edit_file,
+        "edit_file" | "write_file" => perms.edit_file,
         "run_bash" => {
             let command = serde_json::from_str::<serde_json::Value>(args)
                 .ok()
@@ -117,6 +117,9 @@ pub async fn run_autonomous(registry: &AgentRegistry, goal: &str) -> anyhow::Res
     let response = agent
         .runner(goal)
         .max_turns(max_turns)
+        // Recover from stray/unknown tool names (e.g. model invents a tool) by
+        // retrying the turn with corrective feedback instead of aborting.
+        .max_invalid_tool_call_retries(3)
         .add_hook(hook)
         .run()
         .await?;
@@ -196,6 +199,14 @@ mod tests {
     fn edit_file_asks() {
         assert!(matches!(
             decide_flow(&perms(), "edit_file", r#"{"path":"x","old":"a","new":"b"}"#),
+            Flow::Skip { .. }
+        ));
+    }
+
+    #[test]
+    fn write_file_asks_like_edit() {
+        assert!(matches!(
+            decide_flow(&perms(), "write_file", r#"{"path":"x","content":"hi"}"#),
             Flow::Skip { .. }
         ));
     }
