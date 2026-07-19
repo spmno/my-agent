@@ -1,0 +1,49 @@
+# Agent runtime configuration.
+# Provider is OpenRouter (OpenAI-compatible). Any OpenRouter model slug works,
+# which lets us route to deepseek / glm / kimi / etc. through one client.
+
+[provider]
+# OpenRouter exposes an OpenAI-compatible API. We point rig's openai client here.
+base_url = "https://openrouter.ai/api/v1"
+api_key_env = "OPENROUTER_API_KEY"
+
+[agent]
+# Default model used by the Orchestrator when no role overrides it.
+# OpenRouter slugs: "deepseek/deepseek-chat", "zhipu/glm-4", "moonshot/kimi-k2", ...
+default_model = "deepseek/deepseek-chat"
+
+# Each role selects its own model and prompt file.
+[agents.orchestrator]
+model = "deepseek/deepseek-chat"
+preamble = "AGENTS.md"
+permissions.edit = "deny"
+permissions.bash = "deny"
+
+[agents.planner]
+model = "deepseek/deepseek-chat"
+preamble = "prompts/planner.md"
+permissions.edit = "deny"
+permissions.bash = "deny"
+
+[agents.builder]
+model = "deepseek/deepseek-chat"
+preamble = "prompts/builder.md"
+permissions.edit = "allow"
+permissions.bash = "allow"
+
+[agents.auditor]
+model = "deepseek/deepseek-chat"
+preamble = "prompts/auditor.md"
+permissions.edit = "deny"
+permissions.bash = "deny"
+
+[memory]
+# JSONL-backed memory store (v1). Extensible to sqlite later.
+dir = "memory"
+conversation_file = "conversations.jsonl"
+lessons_file = "lessons.jsonl"
+rules_file = "rules.json"
+
+[evolution]
+# autolearn-style escalation: a rule observed >= threshold times is promoted to AGENTS.md.
+rule_escalation_threshold = 3

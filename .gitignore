@@ -1,0 +1,6 @@
+/target
+memory/
+*.log
+.env
+
+.sisyphus/
