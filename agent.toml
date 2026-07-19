@@ -43,7 +43,7 @@ preamble = "prompts/builder.md"
 permissions.read_file = "allow"
 permissions.run_bash_readonly = "allow"
 permissions.run_bash_mutating = "ask"
-permissions.edit_file = "ask"
+permissions.edit_file = "allow"
 
 [agents.auditor]
 model = "tencent/hy3:free"
