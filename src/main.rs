@@ -30,7 +30,10 @@ async fn main() -> Result<()> {
 
     let mem = memory::MemoryStore::new(&load_memory_cfg()?)?;
 
-    println!("my-agent ready (OpenRouter). Commands: evolve | evolve-code | add-tool | quit");
+    println!(
+        "my-agent ready (OpenRouter). model: {}\nCommands: model <slug> | evolve | evolve-code | add-tool | quit",
+        current_model(&registry)
+    );
 
     let mut line = String::new();
     loop {
@@ -46,9 +49,19 @@ async fn main() -> Result<()> {
             break;
         }
 
-        // REPL meta-commands for the self-evolution features.
-        // Order matters: "evolve-code"/"add-tool" must be checked before the
-        // "evolve" prefix, since "evolve-code" starts with "evolve".
+        // REPL meta-commands. Order matters: "evolve-code"/"add-tool" must be
+        // checked before the "evolve" prefix, since "evolve-code" starts with
+        // "evolve". "model" is a distinct command.
+        if let Some(rest) = input.strip_prefix("model") {
+            let slug = rest.trim();
+            if slug.is_empty() {
+                println!("current model: {}", current_model(&registry));
+                continue;
+            }
+            registry.set_session_model(slug);
+            println!("model set to: {slug} (applies to all roles this session)");
+            continue;
+        }
         if let Some(rest) = input.strip_prefix("evolve-code") {
             let rest = rest.trim();
             let parts: Vec<String> = rest
@@ -155,5 +168,22 @@ fn load_escalation_threshold() -> Result<u32> {
         .and_then(|v| v.as_integer())
         .unwrap_or(3);
     Ok(t as u32)
+}
+
+fn current_model(registry: &registry::AgentRegistry) -> String {
+    match registry.session_model() {
+        Some(m) => m,
+        None => load_default_model().unwrap_or_else(|| "deepseek/deepseek-chat".to_string()),
+    }
+}
+
+fn load_default_model() -> Option<String> {
+    let raw = std::fs::read_to_string("agent.toml").ok()?;
+    let parsed: toml::Value = toml::from_str(&raw).ok()?;
+    parsed
+        .get("agent")
+        .and_then(|a| a.get("default_model"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 

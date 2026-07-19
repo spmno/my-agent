@@ -8,31 +8,33 @@ base_url = "https://openrouter.ai/api/v1"
 api_key_env = "OPENROUTER_API_KEY"
 
 [agent]
-# Default model used by the Orchestrator when no role overrides it.
-# OpenRouter slugs: "deepseek/deepseek-chat", "zhipu/glm-4", "moonshot/kimi-k2", ...
-default_model = "deepseek/deepseek-chat"
+# Default model used by all roles unless overridden. Any OpenRouter slug works,
+# including free models. Switch at runtime with the REPL command: model <slug>
+# e.g. model tencent/hy3:free
+default_model = "tencent/hy3:free"
 
-# Each role selects its own model and prompt file.
+# Each role selects its own model and prompt file. Override all at once from
+# the REPL with: model <slug>
 [agents.orchestrator]
-model = "deepseek/deepseek-chat"
+model = "tencent/hy3:free"
 preamble = "AGENTS.md"
 permissions.edit = "deny"
 permissions.bash = "deny"
 
 [agents.planner]
-model = "deepseek/deepseek-chat"
+model = "tencent/hy3:free"
 preamble = "prompts/planner.md"
 permissions.edit = "deny"
 permissions.bash = "deny"
 
 [agents.builder]
-model = "deepseek/deepseek-chat"
+model = "tencent/hy3:free"
 preamble = "prompts/builder.md"
 permissions.edit = "allow"
 permissions.bash = "allow"
 
 [agents.auditor]
-model = "deepseek/deepseek-chat"
+model = "tencent/hy3:free"
 preamble = "prompts/auditor.md"
 permissions.edit = "deny"
 permissions.bash = "deny"

@@ -2,7 +2,7 @@ use crate::providers::{openrouter_client, ChatAgent};
 use rig_core::client::CompletionClient;
 use rig_core::completion::Prompt;
 use serde::Deserialize;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -71,19 +71,34 @@ impl RoleAgent {
 
 pub struct AgentRegistry {
     config: Arc<AgentRegistryConfig>,
+    // Runtime model override for the whole session. When set, every role uses
+    // this slug instead of its configured model. Lets the user switch to a
+    // free model (e.g. tencent/hy3:free) from the REPL without editing files.
+    session_model: Arc<Mutex<Option<String>>>,
 }
 
 impl AgentRegistry {
     pub fn new(config: AgentRegistryConfig) -> Self {
         Self {
             config: Arc::new(config),
+            session_model: Arc::new(Mutex::new(None)),
         }
     }
 
     pub fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
+            session_model: self.session_model.clone(),
         }
+    }
+
+    /// Override the model used by all roles for this session.
+    pub fn set_session_model(&self, slug: &str) {
+        *self.session_model.lock().unwrap() = Some(slug.to_string());
+    }
+
+    pub fn session_model(&self) -> Option<String> {
+        self.session_model.lock().unwrap().clone()
     }
 
     pub fn build(&self, role: Role) -> anyhow::Result<RoleAgent> {
@@ -96,19 +111,24 @@ impl AgentRegistry {
         let client = openrouter_client()?;
         let preamble = std::fs::read_to_string(&rc.preamble)
             .unwrap_or_else(|_| format!("You are the {key} agent."));
+        // Session override wins over the per-role configured model.
+        let model = match *self.session_model.lock().unwrap() {
+            Some(ref m) => m.clone(),
+            None => rc.model.clone(),
+        };
         let with_tools =
             rc.permissions.edit == Permission::Allow || rc.permissions.bash == Permission::Allow;
         let agent = if with_tools {
             let tools = crate::tools::builtin_tools()?;
             client
-                .agent(&rc.model)
+                .agent(&model)
                 .preamble(&preamble)
                 .temperature(0.7)
                 .tools(tools)
                 .build()
         } else {
             client
-                .agent(&rc.model)
+                .agent(&model)
                 .preamble(&preamble)
                 .temperature(0.7)
                 .build()
