@@ -1,11 +1,12 @@
+// 代码自修改模块：对源码做精确 old->new 替换，再用 `cargo build` 验证。
+// 失败则回退到修改前内容，并把编译错误返回，便于上层 LLM 自我纠正后重试。
+// 这是 OMO 子代理改代码的真实 Rust 版本：编译即验证关卡。
 use anyhow::Result;
 use std::process::Command;
 
-/// Apply an edit to a source file using exact old->new replacement, then verify
-/// with `cargo build`. On failure the file is reverted to its pre-edit content
-/// and the compiler error is returned so an LLM caller can self-correct and try
-/// again. This is the realistic Rust analog of OMO subagents editing the
-/// codebase: compilation is the verification gate.
+/// 对源文件做精确 old->new 替换，然后用 `cargo build` 验证。失败时文件回退到
+/// 修改前内容，并返回编译错误，以便 LLM 调用方自我纠正后重试。这是 OMO 子代理
+/// 编辑代码库的现实 Rust 类比：编译即验证关卡。
 pub fn evolve_code(file: &str, old: &str, new: &str) -> Result<String> {
     let content = std::fs::read_to_string(file)?;
     if !content.contains(old) {

@@ -1,3 +1,5 @@
+// 提示词进化模块：用一套固定的评估基准（benchmark）给"候选提示词"打分，
+// 只有分数不低于当前版本的提示词才会被采用，从而防止提示词越改越差（漂移）。
 use crate::providers::{openrouter_client, ChatAgent};
 use crate::registry::{AgentRegistry, Role};
 use anyhow::Result;
@@ -5,15 +7,16 @@ use rig_core::client::CompletionClient;
 use rig_core::completion::Prompt;
 use std::process::Command;
 
-/// A fixed eval benchmark: canned tasks scored pass/fail by an auditor agent.
-/// The prompt-evolution loop only promotes a new preamble if it scores >= the
-/// previous one on this benchmark. This is the gate that prevents prompt drift.
+/// 固定的评估基准：一组内置任务，由审计者 Agent 判定通过/失败。提示词进化循环
+/// 只有在"新提示词在本基准上的得分 >= 旧提示词"时才采用新版本。这一关正是
+/// 防止提示词漂移（prompt drift）的机制。
 const BENCHMARK_TASKS: &[&str] = &[
     "Write a Rust function that returns the nth Fibonacci number.",
     "Explain what a closure is in one sentence.",
     "List three ways to handle errors in Rust.",
 ];
 
+/// 提示词进化器：持有注册表与被进化的 AGENTS.md 路径。
 pub struct PromptEvolver {
     registry: AgentRegistry,
     agents_md_path: String,
@@ -27,12 +30,12 @@ impl PromptEvolver {
         }
     }
 
-    /// Read the current preamble (AGENTS.md).
+    /// 读取当前提示词（AGENTS.md 的内容）。
     pub fn current_preamble(&self) -> Result<String> {
         Ok(std::fs::read_to_string(&self.agents_md_path)?)
     }
 
-    /// Run the benchmark against a given preamble; returns the count of passing tasks.
+    /// 针对给定提示词跑一遍基准，返回通过的任务数量。
     pub async fn eval_preamble(&self, preamble: &str) -> Result<usize> {
         let client = openrouter_client()?;
         let agent: ChatAgent = client
@@ -57,9 +60,8 @@ impl PromptEvolver {
         Ok(passed)
     }
 
-    /// Propose a new preamble via a meta-agent, then promote it only if the eval
-    /// shows it is at least as good. Reversible: we git-tag the old preamble
-    /// before overwriting.
+    /// 由一个元 Agent 提出新提示词，再用评估判定"起码不比旧的差"才采用。
+    /// 可回退：覆盖前先用 git tag 给旧提示词打点。
     pub async fn evolve(&self) -> Result<String> {
         let current = self.current_preamble()?;
         let meta = self.registry.build(Role::Orchestrator)?;
