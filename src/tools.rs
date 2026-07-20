@@ -25,14 +25,14 @@ impl Tool for ReadFile {
     type Output = String;
 
     fn description(&self) -> String {
-        "Read a UTF-8 text file from the project worktree.".to_string()
+        "从项目工作树读取一个 UTF-8 文本文件。".to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
         json!({
             "type": "object",
             "properties": {
-                "path": { "type": "string", "description": "Relative path to the file" }
+                "path": { "type": "string", "description": "文件的相对路径" }
             },
             "required": ["path"],
         })
@@ -59,7 +59,7 @@ impl Tool for EditFile {
     type Output = String;
 
     fn description(&self) -> String {
-        "Replace the first occurrence of `old` with `new` in a file.".to_string()
+        "把文件中第一次出现的 `old` 替换为 `new`。".to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -67,8 +67,8 @@ impl Tool for EditFile {
             "type": "object",
             "properties": {
                 "path": { "type": "string" },
-                "old": { "type": "string", "description": "Exact text to replace" },
-                "new": { "type": "string", "description": "Replacement text" }
+                "old": { "type": "string", "description": "要被替换的精确文本" },
+                "new": { "type": "string", "description": "替换后的文本" }
             },
             "required": ["path", "old", "new"],
         })
@@ -100,15 +100,15 @@ impl Tool for WriteFile {
     type Output = String;
 
     fn description(&self) -> String {
-        "Create or overwrite a file with the given content.".to_string()
+        "用给定内容创建或覆盖一个文件。".to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
         json!({
             "type": "object",
             "properties": {
-                "path": { "type": "string", "description": "Relative path to the file" },
-                "content": { "type": "string", "description": "Full file content to write" }
+                "path": { "type": "string", "description": "文件的相对路径" },
+                "content": { "type": "string", "description": "要写入的完整文件内容" }
             },
             "required": ["path", "content"],
         })
@@ -134,13 +134,13 @@ impl Tool for RunBash {
     type Output = String;
 
     fn description(&self) -> String {
-        "Run a shell command in the project worktree and return stdout+stderr.".to_string()
+        "在项目工作树内运行一条 shell 命令，返回 stdout+stderr。".to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
         json!({
             "type": "object",
-            "properties": { "command": { "type": "string" } },
+            "properties": { "command": { "type": "string", "description": "要运行的 shell 命令" } },
             "required": ["command"],
         })
     }

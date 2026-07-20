@@ -31,10 +31,10 @@ impl ReviewGate {
         let auditor = self.registry.build(Role::Auditor)?;
 
         let spec_prompt = format!(
-            "You are a SPEC COMPLIANCE reviewer (stage 1 of 2). \
-             Task requested:\n{task}\n\nWork produced:\n{produced}\n\n\
-             Did the work implement what was asked? Reply with exactly one line: \
-             'APPROVE' or 'REJECT: <what is missing or wrong>'."
+            "你是规格符合性评审员（第 1/2 阶段）。\
+             请求的任务：\n{task}\n\n产出的工作：\n{produced}\n\n\
+             该工作是否实现了所要求的内容？恰好回复一行：\
+             'APPROVE' 或 'REJECT: <缺失或错误之处>'。"
         );
         let spec_out = auditor.run(&spec_prompt).await?;
 
@@ -48,10 +48,10 @@ impl ReviewGate {
         }
 
         let qual_prompt = format!(
-            "You are a CODE QUALITY reviewer (stage 2 of 2). \
-             Task requested:\n{task}\n\nWork produced:\n{produced}\n\n\
-             Check security, correctness, and maintainability. Reply with exactly one line: \
-             'APPROVE' or 'REJECT: <issues>' or 'CLARIFY: <question>'."
+            "你是代码质量评审员（第 2/2 阶段）。\
+             请求的任务：\n{task}\n\n产出的工作：\n{produced}\n\n\
+             检查安全性、正确性与可维护性。恰好回复一行：\
+             'APPROVE' 或 'REJECT: <问题>' 或 'CLARIFY: <疑问>'。"
         );
         let qual_out = auditor.run(&qual_prompt).await?;
         let up = qual_out.to_uppercase();

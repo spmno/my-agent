@@ -162,7 +162,9 @@ impl AgentRegistry {
             .ok_or_else(|| anyhow::anyhow!("no config for role {key}"))?;
         let client = openrouter_client()?;
         let preamble = std::fs::read_to_string(&rc.preamble)
-            .unwrap_or_else(|_| format!("You are the {key} agent."));
+            .unwrap_or_else(|_| format!("你是 {key} agent。"));
+        // 把与角色领域相关的技能指令注入提示词，使模型遵循技能中的步骤。
+        let preamble = inject_skills_public(&preamble);
         // 会话级模型覆盖优先于角色各自配置的模型。
         let model = match *self.session_model.lock().unwrap() {
             Some(ref m) => m.clone(),
@@ -211,6 +213,16 @@ impl AgentRegistry {
     pub fn role_config(&self, role: Role) -> Option<&RoleConfig> {
         let key = format!("{role:?}").to_lowercase();
         self.config.roles.get(&key)
+    }
+}
+
+/// 把与给定文本相关的技能指令拼接到提示词末尾，供模型遵循。无相关技能时原样返回。
+pub fn inject_skills_public(preamble: &str) -> String {
+    let skill_text = crate::skills::relevant_skills(preamble);
+    if skill_text.is_empty() {
+        preamble.to_string()
+    } else {
+        format!("{preamble}\n\n# Loaded Skills\n{skill_text}")
     }
 }
 

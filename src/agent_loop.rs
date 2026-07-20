@@ -136,7 +136,9 @@ fn build_runner_agent(
         .ok_or_else(|| anyhow::anyhow!("no config for role {role:?}"))?;
     let client = crate::providers::openrouter_client()?;
     let preamble = std::fs::read_to_string(&rc.preamble)
-        .unwrap_or_else(|_| format!("You are the {role:?} agent."));
+        .unwrap_or_else(|_| format!("你是 {role:?} agent。"));
+    // 与 registry 的 build 一致：把相关技能指令注入提示词。
+    let preamble = crate::registry::inject_skills_public(&preamble);
     let model = registry.session_model().unwrap_or_else(|| rc.model.clone());
     let tools: Vec<Box<dyn ToolDyn>> = crate::tools::builtin_tools()?;
     let agent = client

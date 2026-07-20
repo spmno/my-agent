@@ -48,9 +48,9 @@ impl PromptEvolver {
         for task in BENCHMARK_TASKS {
             let out = agent.prompt(*task).await?;
             let verdict_prompt = format!(
-                "Does the following answer correctly and usefully address the task?\n\
+                "下面的回答是否正确地、有效地解决了该任务？\n\
                  Task: {task}\nAnswer: {out}\n\
-                 Reply with exactly one line: PASS or FAIL."
+                 恰好回复一行：PASS 或 FAIL。"
             );
             let v = judge.run(&verdict_prompt).await?;
             if v.to_uppercase().contains("PASS") {
@@ -66,10 +66,9 @@ impl PromptEvolver {
         let current = self.current_preamble()?;
         let meta = self.registry.build(Role::Orchestrator)?;
         let proposal_prompt = format!(
-            "You are a meta-agent improving an AI agent's system prompt. \
-             Below is the current prompt. Propose an improved version that makes \
-             the agent more helpful, correct, and safe. Output ONLY the new prompt \
-             text, no commentary.\n\nCURRENT PROMPT:\n{current}"
+            "你是一个元 agent，负责改进某个 AI agent 的系统提示词。\
+             下面是当前的提示词。请提出一个改进版本，让该 agent 更有帮助、更准确、更安全。\
+             只输出新的提示词文本，不要附加任何评论。\n\n当前提示词：\n{current}"
         );
         let proposed = meta.run(&proposal_prompt).await?;
 

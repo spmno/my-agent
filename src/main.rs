@@ -7,6 +7,7 @@ mod reviewer;
 mod tools;
 mod evolution;
 mod agent_loop;
+mod skills;
 
 use anyhow::Result;
 use evolution::{
@@ -35,8 +36,8 @@ async fn main() -> Result<()> {
 
     let mem = memory::MemoryStore::new(&load_memory_cfg()?)?;
 
-    println!(
-        "my-agent ready (OpenRouter). model: {}\nCommands: model <slug> | evolve | evolve-code | add-tool | quit",
+        println!(
+        "my-agent ready (OpenRouter). model: {}\nCommands: model <slug> | evolve | evolve-code | add-tool | add-skill | skills | quit",
         current_model(&registry)
     );
 
@@ -98,6 +99,38 @@ async fn main() -> Result<()> {
             match tool_ext::add_tool(parts[0], parts[1]) {
                 Ok(msg) => println!("{msg}"),
                 Err(e) => eprintln!("add-tool error: {e}"),
+            }
+            continue;
+        }
+        // 新增技能：写 skills/<name>.md 并登记进清单（无需重新编译）。
+        if let Some(rest) = input.strip_prefix("add-skill") {
+            let rest = rest.trim();
+            let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+            if parts.len() < 2 {
+                println!("usage: add-skill <name> <description>");
+                continue;
+            }
+            let body = format!("# {}\n\n{}\n\n(Describe the step-by-step instructions here.)\n", parts[0], parts[1]);
+            match skills::add_skill(parts[0], parts[1], &body) {
+                Ok(msg) => println!("{msg}"),
+                Err(e) => eprintln!("add-skill error: {e}"),
+            }
+            continue;
+        }
+        // 列出所有已注册技能。
+        if input == "skills" {
+            match skills::SkillManifest::load() {
+                Ok(m) => {
+                    let list = m.list();
+                    if list.is_empty() {
+                        println!("no skills registered");
+                    } else {
+                        for n in list {
+                            println!("- {n}");
+                        }
+                    }
+                }
+                Err(e) => eprintln!("skills error: {e}"),
             }
             continue;
         }
