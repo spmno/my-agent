@@ -1,5 +1,5 @@
 // 自主循环模块：用 rig 的 AgentRunner 驱动一个自我驱动的 Agent 循环（上限 max_turns），
-// 并通过 HitlHook（rig AgentHook）在每次工具调用时按权限分级做"人在环"门控。
+// 并通过 HitlHook（rig AgentHook）在每次工具调用时按权限分级做 HITL（人在环）门控。
 use std::sync::{Arc, Mutex};
 
 use rig_core::agent::{AgentHook, Flow, HookContext, StepEvent};
@@ -11,7 +11,7 @@ use rig_core::tool::ToolDyn;
 use crate::registry::{AgentRegistry, Permission, Role, ToolPerms};
 use crate::tools::{is_readonly_bash, TOOL_NAMES};
 
-/// 人在环门控。实现为 rig 的 `AgentHook`，拦截每一次 `ToolCall` 并按角色的
+/// HITL（人在环）门控。实现为 rig 的 `AgentHook`，拦截每一次 `ToolCall` 并按角色的
 /// 按工具权限分级处理：
 /// - `Allow` -> 静默执行（不询问）。像 `ls` 这样的琐碎步骤直接通过。
 /// - `Ask`   -> 在终端暂停询问用户；yes 执行，no 跳过。

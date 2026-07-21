@@ -1,5 +1,5 @@
 // 注册表模块：定义角色（Role）、按工具的权限分级（ToolPerms / Permission）、
-// 以及构建和管理各角色 Agent 的 AgentRegistry。权限分级驱动自主循环的人在环控制。
+// 以及构建和管理各角色 Agent 的 AgentRegistry。权限分级驱动自主循环的 HITL（人在环）控制。
 use crate::providers::{openrouter_client, ChatAgent};
 use rig_core::client::CompletionClient;
 use rig_core::completion::Prompt;
@@ -16,7 +16,7 @@ pub enum Role {
     Auditor,
 }
 
-/// 单个角色的运行时配置：模型、提示词文件、权限分级。
+/// 单个角色的运行时配置：模型、preamble（提示词）文件、权限分级。
 #[derive(Debug, Deserialize, Clone)]
 pub struct RoleConfig {
     pub model: String,
@@ -25,7 +25,7 @@ pub struct RoleConfig {
     pub permissions: ToolPerms,
 }
 
-// 自主循环"人在环"门控所用的按工具权限分级：
+// 自主循环 HITL（人在环）门控所用的按工具权限分级：
 // `allow` = 自动执行不询问；`ask` = 暂停请人类确认；`deny` = 拦截调用并向模型说明原因。
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct ToolPerms {
@@ -96,7 +96,7 @@ impl AgentRegistryConfig {
     }
 }
 
-/// 绑定到某个角色的 Agent：模型 + 提示词（从 .md 文件加载）+ 权限。
+/// 绑定到某个角色的 Agent：模型 + preamble（提示词，从 .md 文件加载）+ 权限。
 pub struct RoleAgent {
     #[allow(dead_code)]
     pub role: Role,
@@ -197,7 +197,7 @@ impl AgentRegistry {
         })
     }
 
-    /// 取某角色的按工具权限分级，供自主循环的"人在环"门控逐次调用决策
+    /// 取某角色的按工具权限分级，供自主循环的 HITL（人在环）门控逐次调用决策
     /// （allow / ask / deny）。
     pub fn tool_perms(&self, role: Role) -> ToolPerms {
         let key = format!("{role:?}").to_lowercase();
