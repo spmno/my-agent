@@ -17,12 +17,33 @@ use evolution::{
 };
 use registry::{AgentRegistryConfig, AgentRegistry, Orchestrator};
 use reviewer::ReviewGate;
+use tracing::{info, warn, error};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    // 日志同时输出到终端和按时间命名的文件（logs/YYYY-MM-DD_HH-MM-SS.log）。
+    // 使用 tracing-subscriber 的 layer 组合：stdout layer + file layer。
+    {
+        std::fs::create_dir_all("logs")?;
+        let log_name = format!(
+            "logs/{}.log",
+            chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
+        );
+        let log_file = std::fs::File::create(&log_name)?;
+        let file_layer = tracing_subscriber::fmt::layer()
+            .with_ansi(false)
+            .with_writer(log_file);
+        let stdout_layer = tracing_subscriber::fmt::layer()
+            .with_writer(std::io::stdout);
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::new("info"))
+            .with(file_layer)
+            .with(stdout_layer)
+            .init();
+        info!("[trace] 日志文件: {log_name}");
+    }
 
     let reg_cfg = AgentRegistryConfig::load("agent.toml")?;
     #[allow(unused)]
@@ -36,7 +57,7 @@ async fn main() -> Result<()> {
 
     let mem = memory::MemoryStore::new(&load_memory_cfg()?)?;
 
-        println!(
+    info!(
         "my-agent ready (DeepSeek). model: {}\nCommands: model <slug> | evolve | evolve-code | add-tool | add-skill | skills | quit",
         current_model(&registry)
     );
@@ -66,11 +87,11 @@ async fn main() -> Result<()> {
         if let Some(rest) = input.strip_prefix("model") {
             let slug = rest.trim();
             if slug.is_empty() {
-                println!("current model: {}", current_model(&registry));
+                info!("current model: {}", current_model(&registry));
                 continue;
             }
             registry.set_session_model(slug);
-            println!("model set to: {slug} (applies to all roles this session)");
+            info!("model set to: {slug} (applies to all roles this session)");
             continue;
         }
         if let Some(rest) = input.strip_prefix("evolve-code") {
@@ -80,12 +101,12 @@ async fn main() -> Result<()> {
                 .map(|p| p.trim_matches('"').to_string())
                 .collect();
             if parts.len() < 3 {
-                println!("usage: evolve-code <file> <old_text> <new_text>");
+                warn!("usage: evolve-code <file> <old_text> <new_text>");
                 continue;
             }
             match self_modify::evolve_code(&parts[0], &parts[1], &parts[2]) {
-                Ok(msg) => println!("{msg}"),
-                Err(e) => eprintln!("evolve-code error: {e}"),
+                Ok(msg) => info!("{msg}"),
+                Err(e) => error!("evolve-code error: {e}"),
             }
             continue;
         }
@@ -93,12 +114,12 @@ async fn main() -> Result<()> {
             let rest = rest.trim();
             let parts: Vec<&str> = rest.splitn(2, ' ').collect();
             if parts.len() < 2 {
-                println!("usage: add-tool <name> <description>");
+                warn!("usage: add-tool <name> <description>");
                 continue;
             }
             match tool_ext::add_tool(parts[0], parts[1]) {
-                Ok(msg) => println!("{msg}"),
-                Err(e) => eprintln!("add-tool error: {e}"),
+                Ok(msg) => info!("{msg}"),
+                Err(e) => error!("add-tool error: {e}"),
             }
             continue;
         }
@@ -107,13 +128,13 @@ async fn main() -> Result<()> {
             let rest = rest.trim();
             let parts: Vec<&str> = rest.splitn(2, ' ').collect();
             if parts.len() < 2 {
-                println!("usage: add-skill <name> <description>");
+                warn!("usage: add-skill <name> <description>");
                 continue;
             }
             let body = format!("# {}\n\n{}\n\n(Describe the step-by-step instructions here.)\n", parts[0], parts[1]);
             match skills::add_skill(parts[0], parts[1], &body) {
-                Ok(msg) => println!("{msg}"),
-                Err(e) => eprintln!("add-skill error: {e}"),
+                Ok(msg) => info!("{msg}"),
+                Err(e) => error!("add-skill error: {e}"),
             }
             continue;
         }
@@ -123,21 +144,21 @@ async fn main() -> Result<()> {
                 Ok(m) => {
                     let list = m.list();
                     if list.is_empty() {
-                        println!("no skills registered");
+                        info!("no skills registered");
                     } else {
                         for n in list {
-                            println!("- {n}");
+                            info!("- {n}");
                         }
                     }
                 }
-                Err(e) => eprintln!("skills error: {e}"),
+                Err(e) => error!("skills error: {e}"),
             }
             continue;
         }
         if input.strip_prefix("evolve").is_some() {
             match evolver.evolve().await {
-                Ok(msg) => println!("{msg}"),
-                Err(e) => eprintln!("evolve error: {e}"),
+                Ok(msg) => info!("{msg}"),
+                Err(e) => error!("evolve error: {e}"),
             }
             continue;
         }
@@ -146,7 +167,7 @@ async fn main() -> Result<()> {
         // 并调用工具；仅当工具处于"需询问"(ask) 分级时，人才会被暂停确认。
         match agent_loop::run_autonomous(&registry, input).await {
             Ok(out) => {
-                println!("{out}");
+                info!("{out}");
                 mem.append_turn(&memory::Turn {
                     role: "user".into(),
                     content: input.into(),
@@ -158,7 +179,7 @@ async fn main() -> Result<()> {
                     ts: now(),
                 })?;
             }
-            Err(e) => eprintln!("autonomous loop error: {e}"),
+            Err(e) => error!("autonomous loop error: {e}"),
         }
     }
     Ok(())

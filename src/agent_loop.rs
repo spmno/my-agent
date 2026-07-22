@@ -7,6 +7,7 @@ use rig_core::client::CompletionClient;
 use rig_core::completion::{CompletionModel, AssistantContent, Usage};
 use rig_core::providers::deepseek::CompletionModel as DeepSeekModel;
 use rig_core::tool::ToolDyn;
+use tracing::{info, warn};
 
 use crate::registry::{AgentRegistry, Permission, Role, ToolPerms};
 use crate::tools::{is_readonly_bash, TOOL_NAMES};
@@ -59,18 +60,18 @@ impl<M: CompletionModel> AgentHook<M> for HitlHook {
         match event {
             // 模型回合完成：打印思考过程（reasoning）与最终输出。
             StepEvent::ModelTurnFinished { turn, content, usage } => {
-                println!("\n--- 轮次 {turn} ---");
+                info!("\n--- 轮次 {turn} ---");
                 for item in content.iter() {
                     match item {
                         AssistantContent::Reasoning(r) => {
                             let text = r.display_text();
                             if !text.is_empty() {
-                                println!("[思考] {text}");
+                                info!("[思考] {text}");
                             }
                         }
                         AssistantContent::Text(t) => {
                             if !t.text.is_empty() {
-                                println!("[回复] {}", t.text);
+                                info!("[回复] {}", t.text);
                             }
                         }
                         _ => {}
@@ -81,16 +82,16 @@ impl<M: CompletionModel> AgentHook<M> for HitlHook {
             }
             // 工具调用：打印调用信息，然后按权限分级做 HITL 决策。
             StepEvent::ToolCall { tool_name, args, .. } => {
-                println!("[调用工具] {tool_name}({args})");
+                info!("[调用工具] {tool_name}({args})");
                 let perms = self.perms.lock().unwrap().clone();
                 let tier = decide_tier(&perms, tool_name, args);
                 match tier {
                     Permission::Allow => {
-                        println!("  [HITL] 自动允许");
+                        info!("  [HITL] 自动允许");
                         Flow::Continue
                     }
                     Permission::Deny => {
-                        println!("  [HITL] 已拒绝（安全策略）");
+                        info!("  [HITL] 已拒绝（安全策略）");
                         Flow::Skip {
                             reason: format!("工具 `{tool_name}` 被当前角色的安全策略禁止"),
                         }
@@ -117,12 +118,12 @@ impl<M: CompletionModel> AgentHook<M> for HitlHook {
                 } else {
                     result.to_string()
                 };
-                println!("[工具结果] {tool_name}: {truncated}");
+                info!("[工具结果] {tool_name}: {truncated}");
                 Flow::Continue
             }
             // 未知工具名：打印警告。
             StepEvent::InvalidToolCall(ctx) => {
-                eprintln!("[未知工具] {}", ctx.tool_name);
+                warn!("[未知工具] {}", ctx.tool_name);
                 Flow::Continue
             }
             _ => Flow::Continue,
@@ -147,7 +148,7 @@ fn print_usage(usage: &Usage) {
     if reasoning > 0 {
         parts.push(format!("推理={reasoning}"));
     }
-    println!("[用量] {}", parts.join("，"));
+    info!("[用量] {}", parts.join("，"));
 }
 
 /// 纯函数形式的权限分级解析，可不依赖 hook 包装单独测试。`args` 为 JSON 形式的
