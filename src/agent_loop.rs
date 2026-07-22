@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use rig_core::agent::{AgentHook, Flow, HookContext, StepEvent};
 use rig_core::client::CompletionClient;
-use rig_core::completion::CompletionModel;
-use rig_core::providers::openrouter::CompletionModel as OpenRouterModel;
+use rig_core::completion::{CompletionModel, AssistantContent, Usage};
+use rig_core::providers::deepseek::CompletionModel as DeepSeekModel;
 use rig_core::tool::ToolDyn;
 
 use crate::registry::{AgentRegistry, Permission, Role, ToolPerms};
@@ -32,12 +32,6 @@ impl HitlHook {
         }
     }
 
-    /// 按工具名 + 参数解析其权限分级。
-    fn tier_for(&self, tool_name: &str, args: &str) -> Permission {
-        let perms = self.perms.lock().unwrap();
-        decide_tier(&perms, tool_name, args)
-    }
-
     /// 在终端阻塞式询问 yes/no。通过 `spawn_blocking` 在独立线程执行阻塞的
     /// rustyline 读取，避免卡住异步运行时，随后 await 其结果。返回 true 表示"是"。
     async fn confirm(&self, prompt: &str) -> bool {
@@ -62,12 +56,98 @@ impl HitlHook {
 
 impl<M: CompletionModel> AgentHook<M> for HitlHook {
     async fn on_event(&self, _ctx: &HookContext, event: StepEvent<'_, M>) -> Flow {
-        let StepEvent::ToolCall { tool_name, args, .. } = event else {
-            return Flow::Continue;
-        };
-        let perms = self.perms.lock().unwrap().clone();
-        decide_flow(&perms, tool_name, args)
+        match event {
+            // 模型回合完成：打印思考过程（reasoning）与最终输出。
+            StepEvent::ModelTurnFinished { turn, content, usage } => {
+                println!("\n--- 轮次 {turn} ---");
+                for item in content.iter() {
+                    match item {
+                        AssistantContent::Reasoning(r) => {
+                            let text = r.display_text();
+                            if !text.is_empty() {
+                                println!("[思考] {text}");
+                            }
+                        }
+                        AssistantContent::Text(t) => {
+                            if !t.text.is_empty() {
+                                println!("[回复] {}", t.text);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                print_usage(&usage);
+                Flow::Continue
+            }
+            // 工具调用：打印调用信息，然后按权限分级做 HITL 决策。
+            StepEvent::ToolCall { tool_name, args, .. } => {
+                println!("[调用工具] {tool_name}({args})");
+                let perms = self.perms.lock().unwrap().clone();
+                let tier = decide_tier(&perms, tool_name, args);
+                match tier {
+                    Permission::Allow => {
+                        println!("  [HITL] 自动允许");
+                        Flow::Continue
+                    }
+                    Permission::Deny => {
+                        println!("  [HITL] 已拒绝（安全策略）");
+                        Flow::Skip {
+                            reason: format!("工具 `{tool_name}` 被当前角色的安全策略禁止"),
+                        }
+                    }
+                    Permission::Ask => {
+                        let prompt =
+                            format!("  [HITL] 允许执行 `{tool_name}`？[y/N] ");
+                        if self.confirm(&prompt).await {
+                            Flow::Continue
+                        } else {
+                            Flow::Skip {
+                                reason: format!(
+                                    "用户拒绝了 `{tool_name}` 的执行"
+                                ),
+                            }
+                        }
+                    }
+                }
+            }
+            // 工具结果：打印执行结果。
+            StepEvent::ToolResult { tool_name, result, .. } => {
+                let truncated = if result.len() > 500 {
+                    format!("{}…(截断，共 {} 字节)", &result[..500], result.len())
+                } else {
+                    result.to_string()
+                };
+                println!("[工具结果] {tool_name}: {truncated}");
+                Flow::Continue
+            }
+            // 未知工具名：打印警告。
+            StepEvent::InvalidToolCall(ctx) => {
+                eprintln!("[未知工具] {}", ctx.tool_name);
+                Flow::Continue
+            }
+            _ => Flow::Continue,
+        }
     }
+}
+
+/// 打印 token 用量摘要。
+fn print_usage(usage: &Usage) {
+    let input = usage.input_tokens;
+    let output = usage.output_tokens;
+    let cached = usage.cached_input_tokens;
+    let reasoning = usage.reasoning_tokens;
+    if input == 0 && output == 0 {
+        return;
+    }
+    let mut parts = vec![format!("输入={input}")];
+    if cached > 0 {
+        parts.push(format!("缓存={cached}"));
+    }
+    parts.push(format!("输出={output}"));
+    if reasoning > 0 {
+        parts.push(format!("推理={reasoning}"));
+    }
+    println!("[用量] {}", parts.join("，"));
 }
 
 /// 纯函数形式的权限分级解析，可不依赖 hook 包装单独测试。`args` 为 JSON 形式的
@@ -91,9 +171,10 @@ pub fn decide_tier(perms: &ToolPerms, tool_name: &str, args: &str) -> Permission
     }
 }
 
-/// 由权限分级得出纯函数的流程决策。不进行交互询问——`Ask` 分级在此解析为
-/// `Flow::Skip`（视为已拒绝），从而保证确定性与可单元测试；线上 hook 则把
-/// `Ask` 分支替换为终端询问。
+/// 纯函数形式的流程决策。仅用于单元测试，保证确定性与无 IO 依赖。
+/// `Ask` 在此解析为 `Flow::Skip`；线上 hook 应改用 `on_event` 中
+/// 的 match tier 分支，对 `Ask` 通过 `confirm()` 进行终端交互询问。
+#[allow(dead_code)]
 pub fn decide_flow(perms: &ToolPerms, tool_name: &str, args: &str) -> Flow {
     match decide_tier(perms, tool_name, args) {
         Permission::Allow => Flow::Continue,
@@ -130,11 +211,11 @@ pub async fn run_autonomous(registry: &AgentRegistry, goal: &str) -> anyhow::Res
 fn build_runner_agent(
     registry: &AgentRegistry,
     role: Role,
-) -> anyhow::Result<rig_core::agent::Agent<OpenRouterModel>> {
+) -> anyhow::Result<rig_core::agent::Agent<DeepSeekModel>> {
     let rc = registry
         .role_config(role)
         .ok_or_else(|| anyhow::anyhow!("no config for role {role:?}"))?;
-    let client = crate::providers::openrouter_client()?;
+    let client = crate::providers::deepseek_client()?;
     let preamble = std::fs::read_to_string(&rc.preamble)
         .unwrap_or_else(|_| format!("你是 {role:?} agent。"));
     // 与 registry 的 build 一致：把相关技能指令注入提示词。

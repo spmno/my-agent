@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
     let mem = memory::MemoryStore::new(&load_memory_cfg()?)?;
 
         println!(
-        "my-agent ready (OpenRouter). model: {}\nCommands: model <slug> | evolve | evolve-code | add-tool | add-skill | skills | quit",
+        "my-agent ready (DeepSeek). model: {}\nCommands: model <slug> | evolve | evolve-code | add-tool | add-skill | skills | quit",
         current_model(&registry)
     );
 
@@ -195,7 +195,7 @@ fn load_escalation_threshold() -> Result<u32> {
 fn current_model(registry: &registry::AgentRegistry) -> String {
     match registry.session_model() {
         Some(m) => m,
-        None => load_default_model().unwrap_or_else(|| "deepseek/deepseek-chat".to_string()),
+        None => load_default_model().unwrap_or_else(|| "deepseek-v4-pro".to_string()),
     }
 }
 

@@ -1,6 +1,6 @@
 // 注册表模块：定义角色（Role）、按工具的权限分级（ToolPerms / Permission）、
 // 以及构建和管理各角色 Agent 的 AgentRegistry。权限分级驱动自主循环的 HITL（人在环）控制。
-use crate::providers::{openrouter_client, ChatAgent};
+use crate::providers::{deepseek_client, ChatAgent};
 use rig_core::client::CompletionClient;
 use rig_core::completion::Prompt;
 use serde::Deserialize;
@@ -160,7 +160,7 @@ impl AgentRegistry {
             .roles
             .get(&key)
             .ok_or_else(|| anyhow::anyhow!("no config for role {key}"))?;
-        let client = openrouter_client()?;
+        let client = deepseek_client()?;
         let preamble = std::fs::read_to_string(&rc.preamble)
             .unwrap_or_else(|_| format!("你是 {key} agent。"));
         // 把与角色领域相关的技能指令注入提示词，使模型遵循技能中的步骤。
