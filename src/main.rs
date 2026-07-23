@@ -26,16 +26,20 @@ async fn main() -> Result<()> {
     // 日志同时输出到终端和按时间命名的文件（logs/YYYY-MM-DD_HH-MM-SS.log）。
     // 使用 tracing-subscriber 的 layer 组合：stdout layer + file layer。
     {
+        use tracing_subscriber::fmt::time::LocalTime;
         std::fs::create_dir_all("logs")?;
         let log_name = format!(
             "logs/{}.log",
             chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
         );
         let log_file = std::fs::File::create(&log_name)?;
+        let timer = LocalTime::rfc_3339();
         let file_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false)
+            .with_timer(timer.clone())
             .with_writer(log_file);
         let stdout_layer = tracing_subscriber::fmt::layer()
+            .with_timer(timer)
             .with_writer(std::io::stdout);
         tracing_subscriber::registry()
             .with(tracing_subscriber::EnvFilter::new("info"))
