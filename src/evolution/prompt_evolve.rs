@@ -38,8 +38,9 @@ impl PromptEvolver {
     /// 针对给定提示词跑一遍基准，返回通过的任务数量。
     pub async fn eval_preamble(&self, preamble: &str) -> Result<usize> {
         let client = deepseek_client()?;
+        let model = self.registry.effective_model();
         let agent: ChatAgent = client
-            .agent("deepseek-v4-pro")
+            .agent(&model)
             .preamble(preamble)
             .temperature(0.0)
             .build();

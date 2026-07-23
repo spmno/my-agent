@@ -214,6 +214,19 @@ impl AgentRegistry {
         let key = format!("{role:?}").to_lowercase();
         self.config.roles.get(&key)
     }
+
+    /// 解析当前生效的模型：会话覆盖 → agent.toml 各角色配置中的首选模型。
+    /// 用于在 registry.build() 之外（如基准评估）获取模型名。
+    pub fn effective_model(&self) -> String {
+        self.session_model().unwrap_or_else(|| {
+            self.config
+                .roles
+                .values()
+                .next()
+                .map(|rc| rc.model.clone())
+                .unwrap_or_else(|| "deepseek-v4-pro".to_string())
+        })
+    }
 }
 
 /// 把与给定文本相关的技能指令拼接到提示词末尾，供模型遵循。无相关技能时原样返回。

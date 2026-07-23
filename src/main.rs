@@ -213,10 +213,21 @@ fn load_escalation_threshold() -> Result<u32> {
     Ok(t as u32)
 }
 
+/// 解析默认模型名称。优先级：
+/// 1. 环境变量 MY_AGENT_MODEL（最高）
+/// 2. agent.toml 的 [agent].default_model
+/// 3. 硬编码回退值
+fn resolve_default_model() -> String {
+    std::env::var("MY_AGENT_MODEL")
+        .ok()
+        .or_else(|| load_default_model())
+        .unwrap_or_else(|| "deepseek-v4-pro".to_string())
+}
+
 fn current_model(registry: &registry::AgentRegistry) -> String {
     match registry.session_model() {
         Some(m) => m,
-        None => load_default_model().unwrap_or_else(|| "deepseek-v4-pro".to_string()),
+        None => resolve_default_model(),
     }
 }
 
